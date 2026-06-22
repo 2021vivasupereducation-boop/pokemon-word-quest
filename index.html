@@ -506,6 +506,50 @@
       letter-spacing: 2px;
     }
 
+    .music-toggle {
+      position: absolute;
+      z-index: 21;
+      top: calc(86px + env(safe-area-inset-top, 0px));
+      right: 12px;
+      width: 52px;
+      min-width: 52px;
+      min-height: 52px;
+      padding: 0;
+      border: 3px solid var(--line);
+      border-radius: 50%;
+      background: linear-gradient(180deg, #ffffff, #c9f7ff 52%, #7bdff2);
+      box-shadow: 0 7px 0 rgba(0,0,0,0.18), 0 14px 28px rgba(20, 48, 48, 0.16);
+      color: var(--line);
+      cursor: pointer;
+      font-size: 26px;
+      font-weight: 1000;
+      line-height: 1;
+      pointer-events: auto;
+      transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+    }
+
+    .music-toggle.off {
+      background: linear-gradient(180deg, #ffffff, #eeeeee 60%, #d4d4d4);
+      color: #6a4b2e;
+      font-size: 14px;
+    }
+
+    .music-toggle:active {
+      transform: translateY(4px);
+      box-shadow: 0 2px 0 rgba(0,0,0,0.22);
+    }
+
+    .music-toggle:focus-visible {
+      outline: 4px solid rgba(31, 117, 255, 0.28);
+      outline-offset: 2px;
+    }
+
+    .game-shell.battle-view .music-toggle {
+      top: calc(12px + env(safe-area-inset-top, 0px));
+      right: auto;
+      left: calc(50% - 26px);
+    }
+
     .question-panel {
       position: absolute;
       z-index: 8;
@@ -1189,6 +1233,21 @@
         font-size: 19px;
       }
 
+      .music-toggle {
+        width: 46px;
+        min-width: 46px;
+        min-height: 46px;
+        font-size: 22px;
+      }
+
+      .game-shell.battle-view .music-toggle {
+        left: calc(50% - 23px);
+      }
+
+      .music-toggle.off {
+        font-size: 12px;
+      }
+
       .letter-button {
         min-width: 48px;
         height: 50px;
@@ -1273,6 +1332,8 @@
         </div>
       </div>
     </section>
+
+    <button id="musicToggle" class="music-toggle" type="button" aria-label="Music on" title="Music: Sunny">♫</button>
 
     <section id="questionPanel" class="question-panel" aria-label="Question panel">
       <div class="question-top">
@@ -1397,6 +1458,52 @@
     const LEADERBOARD_KEY = `${STORAGE_PREFIX}:leaderboard`;
     const PENDING_KEY = `${STORAGE_PREFIX}:pendingScores`;
     const SHEET_CONFIG_KEY = `${STORAGE_PREFIX}:sheetConfig`;
+    const MUSIC_KEY = `${STORAGE_PREFIX}:music`;
+    const NOTE_FREQUENCIES = {
+      C3: 130.81,
+      D3: 146.83,
+      E3: 164.81,
+      F3: 174.61,
+      G3: 196.00,
+      A3: 220.00,
+      B3: 246.94,
+      C4: 261.63,
+      D4: 293.66,
+      E4: 329.63,
+      F4: 349.23,
+      G4: 392.00,
+      A4: 440.00,
+      B4: 493.88,
+      C5: 523.25,
+      D5: 587.33,
+      E5: 659.25,
+      F5: 698.46,
+      G5: 783.99,
+      A5: 880.00,
+      B5: 987.77,
+      C6: 1046.50,
+      D6: 1174.66
+    };
+    const musicTracks = [
+      {
+        name: "Sunny",
+        tempo: 132,
+        melody: [["E5", 0.5], ["G5", 0.5], ["A5", 0.5], ["G5", 0.5], ["E5", 1], ["D5", 0.5], ["C5", 0.5], ["D5", 1], ["G5", 0.5], ["A5", 0.5], ["C6", 1], ["A5", 0.5], ["G5", 0.5], ["E5", 1]],
+        bass: [["C4", 2], ["F4", 2], ["G4", 2], ["C4", 2]]
+      },
+      {
+        name: "Bubbles",
+        tempo: 116,
+        melody: [["C5", 0.5], ["E5", 0.5], ["G5", 0.5], ["C6", 0.5], ["B5", 0.5], ["G5", 0.5], ["E5", 1], ["D5", 0.5], ["F5", 0.5], ["A5", 0.5], ["D6", 0.5], ["C6", 0.5], ["A5", 0.5], ["F5", 1]],
+        bass: [["C4", 1], ["G3", 1], ["A3", 1], ["F3", 1], ["D4", 1], ["A3", 1], ["G3", 2]]
+      },
+      {
+        name: "Stars",
+        tempo: 104,
+        melody: [["G5", 0.75], ["E5", 0.25], ["D5", 0.5], ["E5", 0.5], ["C5", 1], ["E5", 0.5], ["G5", 0.5], ["A5", 0.75], ["G5", 0.25], ["E5", 0.5], ["D5", 0.5], ["C5", 1]],
+        bass: [["C4", 2], ["E4", 2], ["F4", 2], ["G4", 2]]
+      }
+    ];
 
     const vocabulary = {
       week2: {
@@ -1477,7 +1584,11 @@
       score: 0,
       typed: "",
       startedAt: 0,
-      syncing: false
+      syncing: false,
+      musicEnabled: getStoredMusicEnabled(),
+      musicStarted: false,
+      musicActivated: false,
+      musicTrackIndex: 0
     };
 
     const els = {
@@ -1497,6 +1608,7 @@
       hudMode: document.getElementById("hudMode"),
       hudLives: document.getElementById("hudLives"),
       hudScore: document.getElementById("hudScore"),
+      musicToggle: document.getElementById("musicToggle"),
       questionPanel: document.getElementById("questionPanel"),
       questionBody: document.getElementById("questionBody"),
       questionCount: document.getElementById("questionCount"),
@@ -1528,6 +1640,9 @@
       teacherMeta: document.getElementById("teacherMeta")
     };
 
+    let musicTimer = 0;
+    let musicMaster = null;
+
     function isTeacherMode() {
       return new URLSearchParams(window.location.search).get("teacher") === "1";
     }
@@ -1548,6 +1663,167 @@
       els.toast.classList.add("show");
       window.clearTimeout(toast.timer);
       toast.timer = window.setTimeout(() => els.toast.classList.remove("show"), ms);
+    }
+
+    function getStoredMusicEnabled() {
+      try {
+        return localStorage.getItem(MUSIC_KEY) !== "off";
+      } catch {
+        return true;
+      }
+    }
+
+    function storeMusicPreference(enabled) {
+      try {
+        localStorage.setItem(MUSIC_KEY, enabled ? "on" : "off");
+      } catch {}
+    }
+
+    function getAudioContext() {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) return null;
+      if (!getAudioContext.ctx) getAudioContext.ctx = new AudioContextClass();
+      return getAudioContext.ctx;
+    }
+
+    function currentMusicTrack() {
+      return musicTracks[state.musicTrackIndex % musicTracks.length];
+    }
+
+    function updateMusicButton() {
+      const track = currentMusicTrack();
+      els.musicToggle.textContent = state.musicEnabled ? "♫" : "Off";
+      els.musicToggle.classList.toggle("off", !state.musicEnabled);
+      els.musicToggle.title = state.musicEnabled
+        ? `Music: ${track.name}. Tap to change.`
+        : "Music off. Tap to turn on.";
+      els.musicToggle.setAttribute("aria-label", state.musicEnabled ? `Music on: ${track.name}` : "Music off");
+    }
+
+    function patternBeats(pattern) {
+      return pattern.reduce((total, item) => total + item[1], 0);
+    }
+
+    function ensureMusicMaster(ctx) {
+      if (!musicMaster || musicMaster.context !== ctx) {
+        musicMaster = ctx.createGain();
+        musicMaster.gain.value = 0;
+        musicMaster.connect(ctx.destination);
+      }
+      return musicMaster;
+    }
+
+    function playMusicTone(ctx, freq, start, duration, type, volume, pan = 0) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const out = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, start);
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(volume, start + 0.025);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + Math.max(0.08, duration));
+      osc.connect(gain);
+      if (out) {
+        out.pan.setValueAtTime(pan, start);
+        gain.connect(out);
+        out.connect(musicMaster);
+      } else {
+        gain.connect(musicMaster);
+      }
+      osc.start(start);
+      osc.stop(start + duration + 0.04);
+    }
+
+    function scheduleMusicPattern(ctx, pattern, start, beat, type, volume, pan) {
+      let cursor = start;
+      pattern.forEach(([note, beats]) => {
+        const duration = beats * beat;
+        const freq = NOTE_FREQUENCIES[note];
+        if (freq) playMusicTone(ctx, freq, cursor, duration * 0.86, type, volume, pan);
+        cursor += duration;
+      });
+    }
+
+    function scheduleMusicLoop() {
+      window.clearTimeout(musicTimer);
+      if (!state.musicEnabled || document.hidden) return;
+      const ctx = getAudioContext();
+      if (!ctx) return;
+      ensureMusicMaster(ctx);
+      const track = currentMusicTrack();
+      const beat = 60 / track.tempo;
+      const start = ctx.currentTime + 0.08;
+      musicMaster.gain.cancelScheduledValues(ctx.currentTime);
+      musicMaster.gain.setTargetAtTime(0.052, ctx.currentTime, 0.16);
+      scheduleMusicPattern(ctx, track.melody, start, beat, "triangle", 0.030, 0.16);
+      scheduleMusicPattern(ctx, track.bass, start, beat, "sine", 0.014, -0.20);
+      const loopSeconds = Math.max(patternBeats(track.melody), patternBeats(track.bass)) * beat;
+      musicTimer = window.setTimeout(scheduleMusicLoop, Math.max(900, (loopSeconds - 0.1) * 1000));
+      updateMusicButton();
+    }
+
+    function startBackgroundMusic() {
+      if (!state.musicEnabled || state.musicStarted) {
+        updateMusicButton();
+        return;
+      }
+      const ctx = getAudioContext();
+      if (!ctx) return;
+      if (ctx.state === "suspended") ctx.resume();
+      state.musicActivated = true;
+      state.musicStarted = true;
+      scheduleMusicLoop();
+    }
+
+    function stopBackgroundMusic() {
+      window.clearTimeout(musicTimer);
+      musicTimer = 0;
+      state.musicStarted = false;
+      const ctx = getAudioContext.ctx;
+      if (ctx && musicMaster) {
+        musicMaster.gain.cancelScheduledValues(ctx.currentTime);
+        musicMaster.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.08);
+      }
+      updateMusicButton();
+    }
+
+    function toggleBackgroundMusic() {
+      if (!state.musicEnabled) {
+        state.musicEnabled = true;
+        state.musicTrackIndex = 0;
+        storeMusicPreference(true);
+        startBackgroundMusic();
+        toast(`Music: ${currentMusicTrack().name}`);
+        return;
+      }
+
+      if (state.musicTrackIndex < musicTracks.length - 1) {
+        state.musicTrackIndex += 1;
+        stopBackgroundMusic();
+        state.musicEnabled = true;
+        storeMusicPreference(true);
+        startBackgroundMusic();
+        toast(`Music: ${currentMusicTrack().name}`);
+        return;
+      }
+
+      state.musicEnabled = false;
+      storeMusicPreference(false);
+      stopBackgroundMusic();
+      toast("Music off");
+    }
+
+    function duckMusic(ms = 1200) {
+      const ctx = getAudioContext.ctx;
+      if (!ctx || !musicMaster || !state.musicEnabled || !state.musicStarted) return;
+      musicMaster.gain.cancelScheduledValues(ctx.currentTime);
+      musicMaster.gain.setTargetAtTime(0.014, ctx.currentTime, 0.05);
+      window.clearTimeout(duckMusic.timer);
+      duckMusic.timer = window.setTimeout(() => {
+        if (state.musicEnabled && state.musicStarted && !document.hidden) {
+          musicMaster.gain.setTargetAtTime(0.052, ctx.currentTime, 0.14);
+        }
+      }, ms);
     }
 
     function shuffle(list) {
@@ -1792,6 +2068,7 @@
       state.startedAt = Date.now();
       state.current = null;
       hideMenu();
+      startBackgroundMusic();
       els.gameShell.classList.add("battle-view");
       updateHud();
       renderMarkers();
@@ -1968,10 +2245,8 @@
 
     function playCharacterCry(characterId) {
       const character = characters.find((item) => item.id === characterId) || characters[0];
-      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-      if (!AudioContextClass) return;
-      const ctx = playCharacterCry.ctx || new AudioContextClass();
-      playCharacterCry.ctx = ctx;
+      const ctx = getAudioContext();
+      if (!ctx) return;
       if (ctx.state === "suspended") ctx.resume();
       const now = ctx.currentTime;
       const master = ctx.createGain();
@@ -2010,6 +2285,7 @@
     }
 
     function playBritishWord(word) {
+      duckMusic(1500);
       const audio = new Audio(`${YOUDAO_AUDIO_BASE}${encodeURIComponent(word)}`);
       audio.preload = "auto";
       let settled = false;
@@ -2094,6 +2370,7 @@
       showStep("character");
     });
 
+    els.musicToggle.addEventListener("click", () => toggleBackgroundMusic());
     els.characterNext.addEventListener("click", () => showStep("week"));
     els.playAgain.addEventListener("click", () => startGame(state.mode));
     els.changeMode.addEventListener("click", () => showStep("mode"));
@@ -2114,6 +2391,13 @@
       window.cancelAnimationFrame(resizeTick);
       resizeTick = window.requestAnimationFrame(updatePlayerPosition);
     });
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) {
+        stopBackgroundMusic();
+      } else if (state.musicEnabled && state.musicActivated) {
+        startBackgroundMusic();
+      }
+    });
     window.speechSynthesis?.addEventListener?.("voiceschanged", () => {});
 
     document.body.classList.toggle("teacher-mode", isTeacherMode());
@@ -2121,6 +2405,7 @@
     renderWeeks();
     renderLeaderboard();
     updateHud();
+    updateMusicButton();
     updateSheetUi();
     flushPendingScores();
   </script>
