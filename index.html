@@ -1397,8 +1397,11 @@
     const LEADERBOARD_KEY = `${STORAGE_PREFIX}:leaderboard`;
     const PENDING_KEY = `${STORAGE_PREFIX}:pendingScores`;
     const SHEET_CONFIG_KEY = `${STORAGE_PREFIX}:sheetConfig`;
-    const BACKGROUND_MUSIC_VOLUME = 0.045;
-    const BACKGROUND_MUSIC_DUCK_VOLUME = 0.012;
+    const BACKGROUND_MUSIC_VOLUME = 0.72;
+    const BACKGROUND_MUSIC_DUCK_VOLUME = 0.18;
+    const BACKGROUND_MELODY_VOLUME = 0.060;
+    const BACKGROUND_BASS_VOLUME = 0.028;
+    const BACKGROUND_START_CUE_VOLUME = 0.105;
     const NOTE_FREQUENCIES = {
       C3: 130.81,
       E3: 164.81,
@@ -1641,6 +1644,13 @@
       });
     }
 
+    function playBackgroundStartCue(ctx) {
+      const start = ctx.currentTime + 0.03;
+      playBackgroundTone(ctx, "C5", start, 0.16, "triangle", BACKGROUND_START_CUE_VOLUME, -0.12);
+      playBackgroundTone(ctx, "E5", start + 0.13, 0.16, "triangle", BACKGROUND_START_CUE_VOLUME, 0.02);
+      playBackgroundTone(ctx, "G5", start + 0.26, 0.22, "triangle", BACKGROUND_START_CUE_VOLUME, 0.14);
+    }
+
     function scheduleBackgroundMusicLoop() {
       window.clearTimeout(bgmTimer);
       bgmTimer = 0;
@@ -1651,8 +1661,8 @@
       const beat = 60 / backgroundMusic.tempo;
       const start = ctx.currentTime + 0.08;
       setBackgroundMusicVolume(state.bgmDucked ? BACKGROUND_MUSIC_DUCK_VOLUME : BACKGROUND_MUSIC_VOLUME);
-      scheduleBackgroundPattern(ctx, backgroundMusic.melody, start, beat, "triangle", 0.030, 0.16);
-      scheduleBackgroundPattern(ctx, backgroundMusic.bass, start, beat, "sine", 0.014, -0.18);
+      scheduleBackgroundPattern(ctx, backgroundMusic.melody, start, beat, "triangle", BACKGROUND_MELODY_VOLUME, 0.16);
+      scheduleBackgroundPattern(ctx, backgroundMusic.bass, start, beat, "sine", BACKGROUND_BASS_VOLUME, -0.18);
       const loopSeconds = Math.max(patternBeats(backgroundMusic.melody), patternBeats(backgroundMusic.bass)) * beat;
       bgmTimer = window.setTimeout(scheduleBackgroundMusicLoop, Math.max(900, (loopSeconds - 0.1) * 1000));
       document.documentElement.dataset.bgm = "playing";
@@ -1661,10 +1671,21 @@
     function startBackgroundMusic() {
       const ctx = getAudioContext();
       if (!ctx) return;
-      if (ctx.state === "suspended") ctx.resume();
-      if (state.bgmStarted && bgmTimer) return;
-      state.bgmStarted = true;
-      scheduleBackgroundMusicLoop();
+      const begin = () => {
+        ensureBackgroundMusicMaster(ctx);
+        const firstStart = !state.bgmStarted;
+        state.bgmStarted = true;
+        setBackgroundMusicVolume(state.bgmDucked ? BACKGROUND_MUSIC_DUCK_VOLUME : BACKGROUND_MUSIC_VOLUME);
+        if (firstStart) playBackgroundStartCue(ctx);
+        if (!bgmTimer) scheduleBackgroundMusicLoop();
+      };
+      if (ctx.state === "suspended") {
+        ctx.resume().then(begin).catch(() => {
+          document.documentElement.dataset.bgm = "blocked";
+        });
+      } else {
+        begin();
+      }
     }
 
     function pauseBackgroundMusic() {
@@ -2259,8 +2280,10 @@
     function primeBackgroundMusic() {
       startBackgroundMusic();
     }
-    document.addEventListener("pointerdown", primeBackgroundMusic, { once: true, passive: true });
-    document.addEventListener("keydown", primeBackgroundMusic, { once: true });
+    document.addEventListener("pointerdown", primeBackgroundMusic, { passive: true });
+    document.addEventListener("touchstart", primeBackgroundMusic, { passive: true });
+    document.addEventListener("click", primeBackgroundMusic, { capture: true, passive: true });
+    document.addEventListener("keydown", primeBackgroundMusic);
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) {
         pauseBackgroundMusic();
