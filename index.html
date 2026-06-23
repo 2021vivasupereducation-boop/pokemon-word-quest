@@ -506,18 +506,6 @@
       letter-spacing: 2px;
     }
 
-    .youtube-bgm {
-      position: absolute;
-      z-index: -1;
-      left: -9999px;
-      top: 0;
-      width: 1px;
-      height: 1px;
-      border: 0;
-      opacity: 0;
-      pointer-events: none;
-    }
-
     .question-panel {
       position: absolute;
       z-index: 8;
@@ -1286,16 +1274,6 @@
       </div>
     </section>
 
-    <iframe
-      id="youtubeBgm"
-      class="youtube-bgm"
-      title="Background music"
-      src="https://www.youtube.com/embed/JOXUEZloyZE?enablejsapi=1&autoplay=1&loop=1&playlist=JOXUEZloyZE&controls=0&disablekb=1&modestbranding=1&playsinline=1&rel=0"
-      allow="autoplay; encrypted-media"
-      referrerpolicy="strict-origin-when-cross-origin"
-      tabindex="-1"
-      aria-hidden="true"></iframe>
-
     <section id="questionPanel" class="question-panel" aria-label="Question panel">
       <div class="question-top">
         <span id="questionCount">Question 1/12</span>
@@ -1419,8 +1397,33 @@
     const LEADERBOARD_KEY = `${STORAGE_PREFIX}:leaderboard`;
     const PENDING_KEY = `${STORAGE_PREFIX}:pendingScores`;
     const SHEET_CONFIG_KEY = `${STORAGE_PREFIX}:sheetConfig`;
-    const BACKGROUND_MUSIC_VOLUME = 28;
-    const BACKGROUND_MUSIC_DUCK_VOLUME = 8;
+    const BACKGROUND_MUSIC_VOLUME = 0.045;
+    const BACKGROUND_MUSIC_DUCK_VOLUME = 0.012;
+    const NOTE_FREQUENCIES = {
+      C3: 130.81,
+      E3: 164.81,
+      F3: 174.61,
+      G3: 196.00,
+      A3: 220.00,
+      C4: 261.63,
+      D4: 293.66,
+      E4: 329.63,
+      F4: 349.23,
+      G4: 392.00,
+      A4: 440.00,
+      B4: 493.88,
+      C5: 523.25,
+      D5: 587.33,
+      E5: 659.25,
+      G5: 783.99,
+      A5: 880.00,
+      C6: 1046.50
+    };
+    const backgroundMusic = {
+      tempo: 126,
+      melody: [["E5", 0.5], ["G5", 0.5], ["A5", 0.5], ["G5", 0.5], ["E5", 1], ["D5", 0.5], ["C5", 0.5], ["D5", 1], ["G5", 0.5], ["A5", 0.5], ["C6", 1], ["A5", 0.5], ["G5", 0.5], ["E5", 1]],
+      bass: [["C4", 2], ["F3", 2], ["G3", 2], ["C4", 2]]
+    };
 
     const vocabulary = {
       week2: {
@@ -1502,8 +1505,8 @@
       typed: "",
       startedAt: 0,
       syncing: false,
-      bgmRequested: false,
-      bgmStarted: false
+      bgmStarted: false,
+      bgmDucked: false
     };
 
     const els = {
@@ -1523,7 +1526,6 @@
       hudMode: document.getElementById("hudMode"),
       hudLives: document.getElementById("hudLives"),
       hudScore: document.getElementById("hudScore"),
-      youtubeBgm: document.getElementById("youtubeBgm"),
       questionPanel: document.getElementById("questionPanel"),
       questionBody: document.getElementById("questionBody"),
       questionCount: document.getElementById("questionCount"),
@@ -1555,7 +1557,8 @@
       teacherMeta: document.getElementById("teacherMeta")
     };
 
-    let bgmRetryTimer = 0;
+    let bgmTimer = 0;
+    let bgmMaster = null;
 
     function isTeacherMode() {
       return new URLSearchParams(window.location.search).get("teacher") === "1";
@@ -1586,53 +1589,102 @@
       return getAudioContext.ctx;
     }
 
-    function postYouTubeCommand(func, args = []) {
-      if (!els.youtubeBgm?.contentWindow) return;
-      els.youtubeBgm.dataset.lastCommand = func;
-      els.youtubeBgm.contentWindow.postMessage(JSON.stringify({
-        event: "command",
-        func,
-        args
-      }), "https://www.youtube.com");
+    function ensureBackgroundMusicMaster(ctx) {
+      if (!bgmMaster || bgmMaster.context !== ctx) {
+        bgmMaster = ctx.createGain();
+        bgmMaster.gain.value = 0;
+        bgmMaster.connect(ctx.destination);
+      }
+      return bgmMaster;
     }
 
     function setBackgroundMusicVolume(volume) {
-      postYouTubeCommand("setVolume", [volume]);
+      const ctx = getAudioContext.ctx;
+      if (!ctx || !bgmMaster) return;
+      bgmMaster.gain.cancelScheduledValues(ctx.currentTime);
+      bgmMaster.gain.setTargetAtTime(volume, ctx.currentTime, 0.12);
     }
 
-    function requestBackgroundMusic() {
-      state.bgmRequested = true;
-      postYouTubeCommand("unMute");
-      setBackgroundMusicVolume(BACKGROUND_MUSIC_VOLUME);
-      postYouTubeCommand("playVideo");
-      window.clearTimeout(bgmRetryTimer);
-      bgmRetryTimer = window.setTimeout(() => {
-        if (state.bgmRequested && !document.hidden) {
-          setBackgroundMusicVolume(BACKGROUND_MUSIC_VOLUME);
-          postYouTubeCommand("playVideo");
-        }
-      }, 900);
+    function patternBeats(pattern) {
+      return pattern.reduce((total, item) => total + item[1], 0);
+    }
+
+    function playBackgroundTone(ctx, note, start, duration, type, volume, pan = 0) {
+      const freq = NOTE_FREQUENCIES[note];
+      if (!freq || !bgmMaster) return;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const out = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, start);
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(volume, start + 0.025);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + Math.max(0.08, duration));
+      osc.connect(gain);
+      if (out) {
+        out.pan.setValueAtTime(pan, start);
+        gain.connect(out);
+        out.connect(bgmMaster);
+      } else {
+        gain.connect(bgmMaster);
+      }
+      osc.start(start);
+      osc.stop(start + duration + 0.04);
+    }
+
+    function scheduleBackgroundPattern(ctx, pattern, start, beat, type, volume, pan) {
+      let cursor = start;
+      pattern.forEach(([note, beats]) => {
+        const duration = beats * beat;
+        playBackgroundTone(ctx, note, cursor, duration * 0.86, type, volume, pan);
+        cursor += duration;
+      });
+    }
+
+    function scheduleBackgroundMusicLoop() {
+      window.clearTimeout(bgmTimer);
+      bgmTimer = 0;
+      if (!state.bgmStarted || document.hidden) return;
+      const ctx = getAudioContext();
+      if (!ctx) return;
+      ensureBackgroundMusicMaster(ctx);
+      const beat = 60 / backgroundMusic.tempo;
+      const start = ctx.currentTime + 0.08;
+      setBackgroundMusicVolume(state.bgmDucked ? BACKGROUND_MUSIC_DUCK_VOLUME : BACKGROUND_MUSIC_VOLUME);
+      scheduleBackgroundPattern(ctx, backgroundMusic.melody, start, beat, "triangle", 0.030, 0.16);
+      scheduleBackgroundPattern(ctx, backgroundMusic.bass, start, beat, "sine", 0.014, -0.18);
+      const loopSeconds = Math.max(patternBeats(backgroundMusic.melody), patternBeats(backgroundMusic.bass)) * beat;
+      bgmTimer = window.setTimeout(scheduleBackgroundMusicLoop, Math.max(900, (loopSeconds - 0.1) * 1000));
+      document.documentElement.dataset.bgm = "playing";
     }
 
     function startBackgroundMusic() {
+      const ctx = getAudioContext();
+      if (!ctx) return;
+      if (ctx.state === "suspended") ctx.resume();
+      if (state.bgmStarted && bgmTimer) return;
       state.bgmStarted = true;
-      els.youtubeBgm.dataset.started = "true";
-      requestBackgroundMusic();
+      scheduleBackgroundMusicLoop();
     }
 
     function pauseBackgroundMusic() {
-      postYouTubeCommand("pauseVideo");
+      window.clearTimeout(bgmTimer);
+      bgmTimer = 0;
+      setBackgroundMusicVolume(0.0001);
+      document.documentElement.dataset.bgm = "paused";
     }
 
     function resumeBackgroundMusic() {
-      if (state.bgmStarted) requestBackgroundMusic();
+      if (state.bgmStarted) scheduleBackgroundMusicLoop();
     }
 
     function duckMusic(ms = 1500) {
       if (!state.bgmStarted) return;
+      state.bgmDucked = true;
       setBackgroundMusicVolume(BACKGROUND_MUSIC_DUCK_VOLUME);
       window.clearTimeout(duckMusic.timer);
       duckMusic.timer = window.setTimeout(() => {
+        state.bgmDucked = false;
         if (state.bgmStarted && !document.hidden) {
           setBackgroundMusicVolume(BACKGROUND_MUSIC_VOLUME);
         }
@@ -2209,9 +2261,6 @@
     }
     document.addEventListener("pointerdown", primeBackgroundMusic, { once: true, passive: true });
     document.addEventListener("keydown", primeBackgroundMusic, { once: true });
-    els.youtubeBgm.addEventListener("load", () => {
-      if (state.bgmRequested) requestBackgroundMusic();
-    });
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) {
         pauseBackgroundMusic();
