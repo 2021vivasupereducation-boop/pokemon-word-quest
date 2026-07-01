@@ -2122,6 +2122,9 @@
     const SHEET_NAME = "Pokemon 华文拼音部首对战";
     const SPREADSHEET_ID = "1TOhQPZhbimDMlyyOBSveTPyTOMQq1yqq7upu2WZoYaA";
     const DEFAULT_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzB7tjRKbYc5AvRHN6EYe_lEK9cz5vdtIwPpVNG_Xx2LTdAOrfg3A0yBDMsVCRP_Scm/exec";
+    const LEGACY_APPS_SCRIPT_URLS = new Set([
+      "https://script.google.com/macros/s/AKfycbwiSQIFEa7CFMdMVUJUVmLl4zIkVX60uwm0PlQX5WpXNuvZ1jnLakO_MfFtXs-WOlENgQ/exec"
+    ]);
     const CHINESE_AUDIO_URL = "https://dict.youdao.com/dictvoice?le=zh&audio=";
     const RESULT_KEY = `${GAME_ID}:results`;
     const PENDING_KEY = `${GAME_ID}:pending`;
@@ -3011,7 +3014,14 @@
     }
 
     function getAppsScriptUrl() {
-      return localStorage.getItem(SCRIPT_URL_KEY) || DEFAULT_APPS_SCRIPT_URL;
+      const savedUrl = localStorage.getItem(SCRIPT_URL_KEY);
+      if (savedUrl && !LEGACY_APPS_SCRIPT_URLS.has(savedUrl)) {
+        return savedUrl;
+      }
+      if (savedUrl) {
+        localStorage.removeItem(SCRIPT_URL_KEY);
+      }
+      return DEFAULT_APPS_SCRIPT_URL;
     }
 
 
